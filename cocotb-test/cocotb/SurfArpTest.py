@@ -1,0 +1,104 @@
+import os
+import random
+import logging
+import socket
+import struct
+
+from scapy.all import *
+from scapy.contrib.roce import *
+
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import RisingEdge, Timer
+from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
+from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
+
+def ip_to_decimal(ip_address):
+    # Convert the IP address to a 32-bit packed binary format
+    packed_ip = socket.inet_aton(ip_address)
+    # Unpack the packed binary format as an unsigned long integer
+    decimal_ip = struct.unpack("!L", packed_ip)[0]
+    return decimal_ip
+
+class UdpEngineTest:
+    def __init__(
+            self,
+            dut,
+    ):
+        self.dut = dut
+        self.log = logging.getLogger("UdpEngineTest")
+        self.log.setLevel(logging.DEBUG)
+        # Clock
+        self.clock = self.dut.clk
+        # Reset
+        self.reset = self.dut.rst
+        # tDest
+        self.tDest = self.dut.tDest
+        # remoteIpAddr
+        self.remoteIpAddr = self.dut.remoteIpAddr
+        # phyReady
+        self.phyReady = self.dut.phyReady
+        # XGMII Tx
+        self.xgmii_tx = XgmiiSink(
+            dut.phyDTx,
+            dut.phyCTx,
+            self.clock,
+            self.reset,
+        )
+        self.xgmii_tx.log.setLevel(logging.WARNING)
+        #XGMII Rx
+        self.xgmii_rx = XgmiiSource(
+            dut.phyDRx,
+            dut.phyCRx,
+            self.clock,
+            self.reset,
+        )
+        self.xgmii_rx.log.setLevel(logging.WARNING)
+
+    async def gen_clock(self):
+        await cocotb.start(Clock(self.clock, 10, "ns").start())
+        self.log.info("Start generating clock")
+
+    async def gen_reset(self):
+        self.reset.value = 1
+        self.remoteIpAddr.value = 0
+        self.phyReady.value = 0
+        self.tDest = 0
+        for _ in range(20):
+            await RisingEdge(self.clock)
+        self.reset.value = 0
+        self.phyReady.value = 1
+        await RisingEdge(self.clock)
+
+    async def xgmii_srp(self):
+        pkt_idx = 0
+        while True:
+            # Get XGMII from testbench
+            data = await self.xgmii_tx.recv()
+            # Extract XGMII data
+            packet = Ether(data.get_payload())
+            self.log.debug(f'Sending packet {pkt_idx} from XGMII')
+            # Send packet and get response
+            resp, _ = srp(packet, verbose=True)
+            for _, r in resp:
+                recv_pkt = r
+            # Extract XGMII data
+            ackRaw = raw(recv_pkt)
+            # Put XGMII into testbench
+            xgmiiFrame = XgmiiFrame.from_payload(ackRaw)
+            await self.xgmii_rx.send(xgmiiFrame)
+            pkt_idx += 1
+
+@cocotb.test(timeout_time=1000000000, timeout_unit="ns")
+async def runUdpEngineTest(dut):
+    tester = UdpEngineTest(
+        dut,
+    )
+    await tester.gen_clock()
+    await tester.gen_reset()
+    xgmii_srp_thread = cocotb.start_soon(tester.xgmii_srp())
+    tester.log.info("Starting Tesbench")
+    for _ in range(200):
+        await RisingEdge(tester.clock)
+    dut.remoteIpAddr.value = ip_to_decimal('192.168.2.11')
+    await Timer(15, units='us')
