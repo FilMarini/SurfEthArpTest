@@ -13,9 +13,18 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
+def invert_ip(ip_address):
+    # Split the IP address by the dots into a list of octets
+    octets = ip_address.split(".")
+    # Reverse the list of octets
+    reversed_octets = octets[::-1]
+    # Join the reversed octets back into a string with dots
+    inverted_ip = ".".join(reversed_octets)
+    return inverted_ip
+
 def ip_to_decimal(ip_address):
     # Convert the IP address to a 32-bit packed binary format
-    packed_ip = socket.inet_aton(ip_address)
+    packed_ip = socket.inet_aton(invert_ip(ip_address))
     # Unpack the packed binary format as an unsigned long integer
     decimal_ip = struct.unpack("!L", packed_ip)[0]
     return decimal_ip
@@ -56,7 +65,7 @@ class UdpEngineTest:
         self.xgmii_rx.log.setLevel(logging.WARNING)
 
     async def gen_clock(self):
-        await cocotb.start(Clock(self.clock, 10, "ns").start())
+        await cocotb.start(Clock(self.clock, 6.4, "ns").start())
         self.log.info("Start generating clock")
 
     async def gen_reset(self):
@@ -77,16 +86,23 @@ class UdpEngineTest:
             data = await self.xgmii_tx.recv()
             # Extract XGMII data
             packet = Ether(data.get_payload())
+            packet.show()
             self.log.debug(f'Sending packet {pkt_idx} from XGMII')
-            # Send packet and get response
-            resp, _ = srp(packet, verbose=True)
-            for _, r in resp:
-                recv_pkt = r
-            # Extract XGMII data
-            ackRaw = raw(recv_pkt)
-            # Put XGMII into testbench
-            xgmiiFrame = XgmiiFrame.from_payload(ackRaw)
-            await self.xgmii_rx.send(xgmiiFrame)
+            if ARP in packet:
+                # Send packet and get response
+                resp, _ = srp(packet, verbose=True, iface='eth0')
+                #sendp(packet, verbose=True, iface='lo')
+                for _, r in resp:
+                    recv_pkt = r
+                self.log.debug(f'Got response for packet {pkt_idx}')
+                # Extract XGMII data
+                ackRaw = raw(recv_pkt)
+                # Put XGMII into testbench
+                xgmiiFrame = XgmiiFrame.from_payload(ackRaw)
+                await self.xgmii_rx.send(xgmiiFrame)
+            else:
+                self.log.debug('just sending a packet')
+                sendp(packet, verbose=True, iface='eth0')
             pkt_idx += 1
 
 @cocotb.test(timeout_time=1000000000, timeout_unit="ns")

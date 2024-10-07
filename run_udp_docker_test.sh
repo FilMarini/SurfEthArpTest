@@ -9,7 +9,7 @@ while getopts 's' option; do
     fi
 done
 
-NET_IFC=eno1
+NET_IFC=enx207bd25410ef
 PORT_NUM=88
 IMAGE_NAME=ethernet-test
 DOCKER_NETWORK=mymacvlan
@@ -38,9 +38,10 @@ docker network create -d macvlan --subnet=$CONTAINER_NET --ip-range=$CONTAINER_N
 docker run --rm -d -v `pwd`:`pwd` -w `pwd` --net=mymacvlan --ip=$CONTAINER_SERVER_IP --name exch_server $IMAGE_NAME python3 cocotb-test/cocotb/SurfArpLoopback.py $CONTAINER_SERVER_IP $PORT_NUM
 
 sleep 1 # Wait a while for server to ready
-docker run --rm -v `pwd`:`pwd` -w `pwd` --net=mymacvlan --ip=$CONTAINER_CLIENT_IP --name exch_client $IMAGE_NAME make && make run
+docker run --rm -v `pwd`:`pwd` -w `pwd` --net=mymacvlan --ip=$CONTAINER_CLIENT_IP --name exch_client $IMAGE_NAME make run
+#docker run --rm -v `pwd`:`pwd` -w `pwd` --net=mymacvlan --ip=$CONTAINER_CLIENT_IP --name exch_client $IMAGE_NAME python3 scapy_test.py
 #make TARGET=UdpIpArpEthRxTx IP_ADDR=$CONTAINER_SERVER_IP UDP_PORT=$PORT_NUM
 
 # Clean containers and delete network
-#docker kill `docker ps -a -q` || true
-#docker network rm $DOCKER_NETWORK
+docker kill `docker ps -a -q` || true
+docker network rm $DOCKER_NETWORK
