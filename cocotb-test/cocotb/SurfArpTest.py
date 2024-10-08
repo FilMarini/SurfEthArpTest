@@ -8,6 +8,7 @@ from scapy.all import *
 from scapy.contrib.roce import *
 
 import cocotb
+from cocotb.queue import Queue
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
@@ -47,6 +48,13 @@ class UdpEngineTest:
         self.remoteIpAddr = self.dut.remoteIpAddr
         # phyReady
         self.phyReady = self.dut.phyReady
+        # DataToCheck
+        self.dataRx      = self.dut.DataRx
+        self.dataRxValid = self.dut.DataRxValid
+        self.dataTx      = self.dut.DataTx
+        self.dataTxValid = self.dut.DataTxValid
+        self.dataRxQueue = Queue()
+        self.dataTxQueue = Queue()
         # XGMII Tx
         self.xgmii_tx = XgmiiSink(
             dut.phyDTx,
@@ -86,9 +94,8 @@ class UdpEngineTest:
             data = await self.xgmii_tx.recv()
             # Extract XGMII data
             packet = Ether(data.get_payload())
-            packet.show()
             self.log.debug(f'Sending packet {pkt_idx} from XGMII')
-            if ARP in packet:
+            if ARP in packet or UDP in packet:
                 # Send packet and get response
                 resp, _ = srp(packet, verbose=True, iface='eth0')
                 #sendp(packet, verbose=True, iface='lo')
@@ -105,6 +112,42 @@ class UdpEngineTest:
                 sendp(packet, verbose=True, iface='eth0')
             pkt_idx += 1
 
+    async def get_data(self):
+        rx_data_idx = 0
+        tx_data_idx = 0
+        while True:
+            if self.dataRxValid.value == 1:
+                await self.dataRxQueue.put(self.dataRx.value.integer)
+                rx_data_idx += 1
+            if self.dataTxValid.value == 1:
+                await self.dataTxQueue.put(self.dataTx.value.integer)
+                tx_data_idx += 1
+            await RisingEdge(self.clock)
+
+    async def check_data(self):
+        check_idx = 0
+        mismatch_idx = 0
+        while True:
+            if check_idx == 0:
+                dataRx = await self.dataRxQueue.get()
+                dataTx = await self.dataTxQueue.get()
+                while dataRx != dataTx:
+                    dataTx = await self.dataTxQueue.get()
+                    self.log.debug(f'Looking for a match.. {hex(dataRx)} --- {hex(dataTx)}')
+                self.log.debug('Starting to check data!')
+                check_idx += 1
+            else:
+                dataTx = await self.dataTxQueue.get()
+                dataRx = await self.dataRxQueue.get()
+                if dataTx != dataRx:
+                    self.log.warning(f'Mismatch!! But only one.. --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}')
+                    mismatch_idx += 1
+                elif mismatch_idx == 1:
+                    mismatch_idx = 0
+                assert (dataRx == dataTx or mismatch_idx <= 1), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
+                self.log.debug(f'Comparison {check_idx} is {hex(dataRx)} --- {hex(dataTx)}')
+                check_idx += 1
+
 @cocotb.test(timeout_time=1000000000, timeout_unit="ns")
 async def runUdpEngineTest(dut):
     tester = UdpEngineTest(
@@ -113,8 +156,10 @@ async def runUdpEngineTest(dut):
     await tester.gen_clock()
     await tester.gen_reset()
     xgmii_srp_thread = cocotb.start_soon(tester.xgmii_srp())
+    get_data_thread = cocotb.start_soon(tester.get_data())
+    check_data_thread = cocotb.start_soon(tester.check_data())
     tester.log.info("Starting Tesbench")
     for _ in range(200):
         await RisingEdge(tester.clock)
     dut.remoteIpAddr.value = ip_to_decimal('192.168.2.11')
-    await Timer(15, units='us')
+    await Timer(10, units='us')

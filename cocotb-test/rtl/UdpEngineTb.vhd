@@ -17,11 +17,19 @@ entity UdpEngineTb is
       MAC_ADDR_G : std_logic_vector(47 downto 0) := x"0a02a8c04202"  -- 02:42:c0:a8:02:0a
       );
    port (
+      -- Clock and Reset
       clk          : in  sl;
       rst          : in  sl;
+      -- User signals
       tDest        : in  slv(7 downto 0);
       remoteIpAddr : in  slv(31 downto 0);
       phyReady     : in  sl;
+      -- Data to check
+      DataTx       : out slv(127 downto 0);
+      DataTxValid  : out sl;
+      DataRx       : out slv(127 downto 0);
+      DataRxValid  : out sl;
+      -- XGMII
       phyDTx       : out slv(63 downto 0);
       phyCTx       : out slv(7 downto 0);
       phyDRx       : in  slv(63 downto 0);
@@ -47,22 +55,9 @@ architecture behav of UdpEngineTb is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   -- constant MAC_ADDR_C : Slv48Array(3 downto 0) := (
-   --    -- 0 => x"010300564400",             --00:44:56:00:03:01
-   --    0 => x"0a02a8c04202",             --02:42:c0:a8:02:0a
-   --    1 => x"020300564400",             --00:44:56:00:03:02
-   --    2 => x"030300564400",             --00:44:56:00:03:03
-   --    3 => x"040300564400"              --00:44:56:00:03:04
-   --    );
-   -- constant IP_ADDR_C : Slv32Array(3 downto 0) := (
-   --    0 => x"0A02A8C0",                 -- 192.168.2.10
-   --    1 => x"0B02A8C0",                 -- 192.168.2.11
-   --    2 => x"0C02A8C0",                 -- 192.168.2.12
-   --    3 => x"0D02A8C0"                  -- 192.168.2.13
-   --    );
-
    signal ethConfig   : EthMacConfigArray(0 downto 0) := (others => ETH_MAC_CONFIG_INIT_C);
    signal txMaster    : AxiStreamMasterType           := AXI_STREAM_MASTER_INIT_C;
+   signal rxMaster    : AxiStreamMasterType           := AXI_STREAM_MASTER_INIT_C;
    signal txSlave     : AxiStreamSlaveType            := AXI_STREAM_SLAVE_INIT_C;
    signal txBusy      : sl;
    signal obMacMaster : AxiStreamMasterType           := AXI_STREAM_MASTER_INIT_C;
@@ -95,6 +90,14 @@ begin  -- architecture behav
          busy         => txBusy);
 
    ----------------------
+   -- Data ports
+   ----------------------
+   DataTx      <= txMaster.tData(127 downto 0);
+   DataTxValid <= txMaster.tValid and txSlave.tReady;
+   DataRx      <= rxMaster.tData(127 downto 0);
+   DataRxValid <= rxMaster.tValid;
+
+   ----------------------
    -- IPv4/ARP/UDP Engine
    ----------------------
    U_UDP_Client : entity surf.UdpEngineWrapper
@@ -121,7 +124,7 @@ begin  -- architecture behav
          ibMacMaster         => ibMacMaster,
          ibMacSlave          => ibMacSlave,
          -- Interface to UDP Server engine(s)
-         obClientMasters     => open,
+         obClientMasters(0)  => rxMaster,
          obClientSlaves(0)   => AXI_STREAM_SLAVE_FORCE_C,
          ibClientMasters(0)  => txMaster,
          ibClientSlaves(0)   => txSlave,
@@ -134,9 +137,10 @@ begin  -- architecture behav
    --------------------
    U_MAC0 : entity surf.EthMacTop
       generic map (
-         TPD_G         => TPD_G,
-         PHY_TYPE_G    => "XGMII",
-         PRIM_CONFIG_G => EMAC_AXIS_CONFIG_C)
+         TPD_G          => TPD_G,
+         PHY_TYPE_G     => "XGMII",
+         DROP_ERR_PKT_G => false,
+         PRIM_CONFIG_G  => EMAC_AXIS_CONFIG_C)
       port map (
          -- DMA Interface
          primClk         => clk,
