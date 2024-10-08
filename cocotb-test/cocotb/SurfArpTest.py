@@ -14,6 +14,9 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
+SERVERS_IP_C = ['192.168.2.11', '192.168.2.12']
+PACKETS_PER_SERVER_C = 50
+
 def invert_ip(ip_address):
     # Split the IP address by the dots into a list of octets
     octets = ip_address.split(".")
@@ -38,6 +41,8 @@ class UdpEngineTest:
         self.dut = dut
         self.log = logging.getLogger("UdpEngineTest")
         self.log.setLevel(logging.DEBUG)
+        # User
+        self.check_idx = 0
         # Clock
         self.clock = self.dut.clk
         # Reset
@@ -125,28 +130,44 @@ class UdpEngineTest:
             await RisingEdge(self.clock)
 
     async def check_data(self):
-        check_idx = 0
+        self.check_idx = 0
         mismatch_idx = 0
         while True:
-            if check_idx == 0:
+            if self.check_idx == 0:
                 dataRx = await self.dataRxQueue.get()
                 dataTx = await self.dataTxQueue.get()
                 while dataRx != dataTx:
                     dataTx = await self.dataTxQueue.get()
                     self.log.debug(f'Looking for a match.. {hex(dataRx)} --- {hex(dataTx)}')
                 self.log.debug('Starting to check data!')
-                check_idx += 1
+                self.check_idx += 1
             else:
                 dataTx = await self.dataTxQueue.get()
                 dataRx = await self.dataRxQueue.get()
                 if dataTx != dataRx:
-                    self.log.warning(f'Mismatch!! But only one.. --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}')
+                    self.log.warning(f'Mismatch!! But could be only one.. --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}')
                     mismatch_idx += 1
                 elif mismatch_idx == 1:
                     mismatch_idx = 0
                 assert (dataRx == dataTx or mismatch_idx <= 1), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
-                self.log.debug(f'Comparison {check_idx} is {hex(dataRx)} --- {hex(dataTx)}')
-                check_idx += 1
+                self.log.debug(f'Comparison {self.check_idx} is {hex(dataRx)} --- {hex(dataTx)}')
+                self.check_idx += 1
+
+    async def server_arbiter(self):
+        while True:
+            if self.remoteIpAddr.value == ip_to_decimal(SERVERS_IP_C[0]):
+                next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                break
+            await RisingEdge(self.clock)
+        for i in range(len(SERVERS_IP_C)-1):
+            while True:
+                if self.check_idx == next_check_idx:
+                    self.log.debug(f'Changing IP address to {ip_to_decimal(SERVERS_IP_C[i+1])}')
+                    self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
+                    next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                    break
+                await RisingEdge(self.clock)
+
 
 @cocotb.test(timeout_time=1000000000, timeout_unit="ns")
 async def runUdpEngineTest(dut):
@@ -158,8 +179,9 @@ async def runUdpEngineTest(dut):
     xgmii_srp_thread = cocotb.start_soon(tester.xgmii_srp())
     get_data_thread = cocotb.start_soon(tester.get_data())
     check_data_thread = cocotb.start_soon(tester.check_data())
+    server_arbiter_thread = cocotb.start_soon(tester.server_arbiter())
     tester.log.info("Starting Tesbench")
     for _ in range(200):
         await RisingEdge(tester.clock)
-    dut.remoteIpAddr.value = ip_to_decimal('192.168.2.11')
+    dut.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[0])
     await Timer(10, units='us')
