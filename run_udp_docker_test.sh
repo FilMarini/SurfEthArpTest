@@ -10,7 +10,7 @@ while getopts 's' option; do
 done
 
 NET_IFC=enx207bd25410ef
-PORT_NUM=88
+PORT_NUM=8192
 IMAGE_NAME=ethernet-test
 DOCKER_NETWORK=mymacvlan
 CONTAINER_NET="192.168.2.0/24"

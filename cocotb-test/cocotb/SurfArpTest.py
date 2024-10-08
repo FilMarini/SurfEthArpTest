@@ -72,7 +72,7 @@ class UdpEngineTest:
         self.reset.value = 1
         self.remoteIpAddr.value = 0
         self.phyReady.value = 0
-        self.tDest = 0
+        self.tDest.value = 0
         for _ in range(20):
             await RisingEdge(self.clock)
         self.reset.value = 0

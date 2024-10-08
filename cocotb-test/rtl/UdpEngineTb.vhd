@@ -12,7 +12,9 @@ use surf.AxiLitePkg.all;
 
 entity UdpEngineTb is
    generic (
-      TPD_G : time := 1 ns
+      TPD_G      : time                          := 1 ns;
+      IP_ADDR_G  : std_logic_vector(31 downto 0) := x"0A02A8C0";  -- 192.168.2.10
+      MAC_ADDR_G : std_logic_vector(47 downto 0) := x"0a02a8c04202"  -- 02:42:c0:a8:02:0a
       );
    port (
       clk          : in  sl;
@@ -45,19 +47,19 @@ architecture behav of UdpEngineTb is
    signal r   : RegType := REG_INIT_C;
    signal rin : RegType;
 
-   constant MAC_ADDR_C : Slv48Array(3 downto 0) := (
-      -- 0 => x"010300564400",             --00:44:56:00:03:01
-      0 => x"0a02a8c04202",             --02:42:c0:a8:02:0a
-      1 => x"020300564400",             --00:44:56:00:03:02
-      2 => x"030300564400",             --00:44:56:00:03:03
-      3 => x"040300564400"              --00:44:56:00:03:04
-      );
-   constant IP_ADDR_C : Slv32Array(3 downto 0) := (
-      0 => x"0A02A8C0",                 -- 192.168.2.10
-      1 => x"0B02A8C0",                 -- 192.168.2.11
-      2 => x"0C02A8C0",                 -- 192.168.2.12
-      3 => x"0D02A8C0"                  -- 192.168.2.13
-      );
+   -- constant MAC_ADDR_C : Slv48Array(3 downto 0) := (
+   --    -- 0 => x"010300564400",             --00:44:56:00:03:01
+   --    0 => x"0a02a8c04202",             --02:42:c0:a8:02:0a
+   --    1 => x"020300564400",             --00:44:56:00:03:02
+   --    2 => x"030300564400",             --00:44:56:00:03:03
+   --    3 => x"040300564400"              --00:44:56:00:03:04
+   --    );
+   -- constant IP_ADDR_C : Slv32Array(3 downto 0) := (
+   --    0 => x"0A02A8C0",                 -- 192.168.2.10
+   --    1 => x"0B02A8C0",                 -- 192.168.2.11
+   --    2 => x"0C02A8C0",                 -- 192.168.2.12
+   --    3 => x"0D02A8C0"                  -- 192.168.2.13
+   --    );
 
    signal ethConfig   : EthMacConfigArray(0 downto 0) := (others => ETH_MAC_CONFIG_INIT_C);
    signal txMaster    : AxiStreamMasterType           := AXI_STREAM_MASTER_INIT_C;
@@ -108,8 +110,8 @@ begin  -- architecture behav
          CLIENT_EXT_CONFIG_G => true)
       port map (
          -- Local Configurations
-         localMac            => MAC_ADDR_C(0),
-         localIp             => IP_ADDR_C(0),
+         localMac            => MAC_ADDR_G,
+         localIp             => IP_ADDR_G,
          -- Remote Configurations
          clientRemotePort(0) => x"0020",  -- PORT = 8192 = 0x2000 (0x0020 in big endianness)
          clientRemoteIp(0)   => remoteIpAddr,
@@ -153,7 +155,7 @@ begin  -- architecture behav
          xgmiiTxc        => phyCTx,
          xgmiiRxd        => phyDRx,
          xgmiiRxc        => phyCRx);
-   ethConfig(0).macAddress <= MAC_ADDR_C(0);
+   ethConfig(0).macAddress <= MAC_ADDR_G;
 
    comb : process (r, rst, txBusy) is
       variable v : RegType;

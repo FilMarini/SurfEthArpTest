@@ -12,13 +12,24 @@ WAVEFILENAME := wave
 # Default target
 all: udpenginetb
 
+# Generics
+INTERFACE   = eth0
+IP          = 192.168.2.10
+#MAC_ADDRESS = $(shell ip link show $(INTERFACE) | awk '/ether/ {print $$2}')
+MAC_ADDRESS = $(shell cat /sys/class/net/$(INTERFACE)/address)
+
+# Variables transformation
+BINARY_IP  = $(shell echo $(IP) | perl -pe 's/(\d+)\.(\d+)\.(\d+)\.(\d+)/sprintf("%08b%08b%08b%08b", $$4, $$3, $$2, $$1)/e')
+BINARY_MAC = $(shell echo $(MAC_ADDRESS) | perl -pe 's/([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2}):([0-9a-fA-F]{2})/sprintf("%08b%08b%08b%08b%08b%08b", hex($$6), hex($$5), hex($$4), hex($$3), hex($$2), hex($$1))/e')
+
 # Elaboration target
 udpenginetb: $(GHDLDIR)/ieee/v93/std_logic_1164.o $(GHDLDIR)/ieee/v93/std_logic_1164-body.o $(GHDLDIR)/ieee/v93/std_logic_arith.o $(GHDLDIR)/ieee/v93/std_logic_unsigned.o $(GHDLDIR)/ieee/v93/numeric_std.o $(GHDLDIR)/ieee/v93/numeric_std-body.o $(GHDLDIR)/ieee/v93/math_real.o $(GHDLDIR)/ieee/v93/math_real-body.o StdRtlPkg.o AxiStreamPkg.o SsiPkg.o EthMacPkg.o $(GHDLDIR)/std/v93/textio.o $(GHDLDIR)/std/v93/textio-body.o TextUtilPkg.o AxiLitePkg.o AxiStreamPipeline.o AxiStreamResize.o AxiStreamGearbox.o FifoXpmDummy.o FifoAlteraMfDummy.o Synchronizer.o RstSync.o SynchronizerVector.o FifoWrFsm.o FifoRdFsm.o SimpleDualPortRam.o FifoOutputPipeline.o FifoAsync.o FifoSync.o Fifo.o FifoCascade.o AxiStreamFifoV2.o SsiPrbsTx.o IpV4EngineDeMux.o ArbiterPkg.o AxiStreamMux.o ArpEngine.o AxiStreamDeMux.o IpV4EngineRx.o IpV4EngineTx.o IcmpEngine.o IgmpV2Engine.o IpV4Engine.o UdpEngineRx.o UdpEngineDhcp.o UdpEngineTx.o Arbiter.o ArpIpTable.o UdpEngineArp.o UdpEngine.o UdpEngineWrapper.o EthMacTxFifo.o EthMacTxBypass.o EthMacTxCsum.o EthMacTxPause.o EthMacTxExportXlgmii.o CrcPkg.o Crc32Parallel.o EthMacTxExportXgmii.o EthMacTxExportGmii.o EthMacTxExport.o EthMacTx.o EthMacFlowCtrl.o EthMacRxImportXlgmii.o EthMacRxImportXgmii.o EthMacRxImportGmii.o EthMacRxImport.o EthMacRxPause.o EthMacRxCsum.o EthMacRxBypass.o EthMacRxFilter.o EthMacRx.o SsiIbFrameFilter.o SsiObFrameFilter.o SsiFifo.o EthMacRxFifo.o EthMacTop.o UdpEngineTb.o
 	$(GHDL) -e $(GHDLFLAGS) $@
 
 # Run target
 run: udpenginetb
-	$(GHDL) -r udpenginetb $(GHDLRUNFLAGS)
+	echo $(MAC_ADDRESS)
+	$(GHDL) -r -gIP_ADDR_G=$(BINARY_IP) -gMAC_ADDR_G=$(BINARY_MAC) udpenginetb $(GHDLRUNFLAGS)
 
 # Targets to analyze files
 $(GHDLDIR)/ieee/v93/std_logic_1164.o: $(GHDLDIR)/ieee/v93/../../src/ieee/v93/std_logic_1164.vhdl
@@ -272,4 +283,4 @@ EthMacTop.o:  $(GHDLDIR)/ieee/v93/std_logic_1164.o $(GHDLDIR)/ieee/v93/std_logic
 UdpEngineTb.o:  $(GHDLDIR)/ieee/v93/std_logic_1164.o $(GHDLDIR)/ieee/v93/std_logic_arith.o $(GHDLDIR)/ieee/v93/std_logic_unsigned.o StdRtlPkg.o AxiStreamPkg.o SsiPkg.o EthMacPkg.o AxiLitePkg.o SsiPrbsTx.o UdpEngineWrapper.o EthMacTop.o
 
 clean:
-	rm *.o *.cf *.ghw *.xml udpenginetb
+	rm -f *.o *.cf *.ghw *.xml udpenginetb
