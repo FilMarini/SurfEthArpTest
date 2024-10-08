@@ -27,7 +27,9 @@ entity UdpEngineTb is
       -- Data to check
       DataTx       : out slv(127 downto 0);
       DataTxValid  : out sl;
+      DataTxKeep   : out slv(15 downto 0);
       DataRx       : out slv(127 downto 0);
+      DataRxKeep   : out slv(15 downto 0);
       DataRxValid  : out sl;
       -- XGMII
       phyDTx       : out slv(63 downto 0);
@@ -94,8 +96,10 @@ begin  -- architecture behav
    ----------------------
    DataTx      <= txMaster.tData(127 downto 0);
    DataTxValid <= txMaster.tValid and txSlave.tReady;
+   DataTxKeep  <= txMaster.tKeep(15 downto 0);
    DataRx      <= rxMaster.tData(127 downto 0);
    DataRxValid <= rxMaster.tValid;
+   DataRxKeep  <= rxMaster.tKeep(15 downto 0);
 
    ----------------------
    -- IPv4/ARP/UDP Engine

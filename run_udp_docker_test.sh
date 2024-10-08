@@ -2,7 +2,7 @@ set -o errexit
 set -o nounset
 set -o xtrace
 
-NET_IFC=enx207bd25410ef
+NET_IFC=enxf4a80db020cf
 PORT_NUM=8192
 IMAGE_NAME=ethernet-test
 DOCKER_NETWORK=mymacvlan

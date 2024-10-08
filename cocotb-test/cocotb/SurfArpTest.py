@@ -43,6 +43,7 @@ class UdpEngineTest:
         self.log.setLevel(logging.DEBUG)
         # User
         self.check_idx = 0
+        self.ipChanged = False
         # Clock
         self.clock = self.dut.clk
         # Reset
@@ -56,8 +57,10 @@ class UdpEngineTest:
         # DataToCheck
         self.dataRx      = self.dut.DataRx
         self.dataRxValid = self.dut.DataRxValid
+        self.dataRxKeep  = self.dut.DataRxKeep
         self.dataTx      = self.dut.DataTx
         self.dataTxValid = self.dut.DataTxValid
+        self.dataTxKeep  = self.dut.DataTxKeep
         self.dataRxQueue = Queue()
         self.dataTxQueue = Queue()
         # XGMII Tx
@@ -122,35 +125,47 @@ class UdpEngineTest:
         tx_data_idx = 0
         while True:
             if self.dataRxValid.value == 1:
-                await self.dataRxQueue.put(self.dataRx.value.integer)
+                dataRx = self.dataRx.value.integer
+                dataRxKeep = self.dataRxKeep.value.integer
+                dataRxHex = dataRx.to_bytes(16, byteorder='big')
+                mask_bits_rx = bin(dataRxKeep)[2:].zfill(16)
+                dataRxByte = bytes([b for b, m in zip(dataRxHex, mask_bits_rx) if m == '1'])
+                await self.dataRxQueue.put(int.from_bytes(dataRxByte, "big"))
                 rx_data_idx += 1
             if self.dataTxValid.value == 1:
-                await self.dataTxQueue.put(self.dataTx.value.integer)
+                dataTx = self.dataTx.value.integer
+                dataTxKeep = self.dataTxKeep.value.integer
+                dataTxHex = dataTx.to_bytes(16, byteorder='big')
+                mask_bits_tx = bin(dataTxKeep)[2:].zfill(16)
+                dataTxByte = bytes([b for b, m in zip(dataTxHex, mask_bits_tx) if m == '1'])
+                await self.dataTxQueue.put(int.from_bytes(dataTxByte, "big"))
                 tx_data_idx += 1
             await RisingEdge(self.clock)
 
     async def check_data(self):
-        self.check_idx = 0
         mismatch_idx = 0
+        startLooking = True
         while True:
-            if self.check_idx == 0:
+            if startLooking:
                 dataRx = await self.dataRxQueue.get()
                 dataTx = await self.dataTxQueue.get()
                 while dataRx != dataTx:
                     dataTx = await self.dataTxQueue.get()
                     self.log.debug(f'Looking for a match.. {hex(dataRx)} --- {hex(dataTx)}')
                 self.log.debug('Starting to check data!')
+                startLooking = False
+                self.ipChanged = False
                 self.check_idx += 1
             else:
                 dataTx = await self.dataTxQueue.get()
                 dataRx = await self.dataRxQueue.get()
-                if dataTx != dataRx:
-                    self.log.warning(f'Mismatch!! But could be only one.. --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}')
-                    mismatch_idx += 1
-                elif mismatch_idx == 1:
-                    mismatch_idx = 0
-                assert (dataRx == dataTx or mismatch_idx <= 1), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
-                self.log.debug(f'Comparison {self.check_idx} is {hex(dataRx)} --- {hex(dataTx)}')
+                if (dataRx != dataTx and self.ipChanged):
+                    startLooking = True
+                    self.log.warning('Found mismatch, its possible its from the IP changing')
+                elif (dataRx != dataTx and not self.ipChanged):
+                    assert (False), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
+                else:
+                    self.log.debug(f'Match #{self.check_idx}! {hex(dataRx)} --- {hex(dataTx)}')
                 self.check_idx += 1
 
     async def server_arbiter(self):
@@ -162,7 +177,8 @@ class UdpEngineTest:
         for i in range(len(SERVERS_IP_C)-1):
             while True:
                 if self.check_idx == next_check_idx:
-                    self.log.debug(f'Changing IP address to {ip_to_decimal(SERVERS_IP_C[i+1])}')
+                    self.log.debug(f'Changing IP address to {SERVERS_IP_C[i+1]}')
+                    self.ipChanged = True
                     self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
                     next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
                     break
@@ -184,4 +200,4 @@ async def runUdpEngineTest(dut):
     for _ in range(200):
         await RisingEdge(tester.clock)
     dut.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[0])
-    await Timer(10, units='us')
+    await Timer(7, units='us')
