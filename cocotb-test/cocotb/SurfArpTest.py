@@ -15,7 +15,7 @@ from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStrea
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
 SERVERS_IP_C = ['192.168.2.11', '192.168.2.12']
-PACKETS_PER_SERVER_C = 50
+PACKETS_PER_SERVER_C = 50   # >=50
 
 def invert_ip(ip_address):
     # Split the IP address by the dots into a list of octets
@@ -156,6 +156,8 @@ class UdpEngineTest:
                 startLooking = False
                 self.ipChanged = False
                 self.check_idx += 1
+                self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                self.log.debug(f'Checking will stop at match {self.next_check_idx}')
             else:
                 dataTx = await self.dataTxQueue.get()
                 dataRx = await self.dataRxQueue.get()
@@ -169,20 +171,27 @@ class UdpEngineTest:
                 self.check_idx += 1
 
     async def server_arbiter(self):
+        # Check first server
         while True:
             if self.remoteIpAddr.value == ip_to_decimal(SERVERS_IP_C[0]):
-                next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
                 break
             await RisingEdge(self.clock)
+        # Check list of servers
         for i in range(len(SERVERS_IP_C)-1):
             while True:
-                if self.check_idx == next_check_idx:
+                if self.check_idx == self.next_check_idx:
                     self.log.debug(f'Changing IP address to {SERVERS_IP_C[i+1]}')
                     self.ipChanged = True
                     self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
-                    next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                    self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
                     break
                 await RisingEdge(self.clock)
+        # Check last server
+        while True:
+            if self.check_idx == self.next_check_idx:
+                break
+            await RisingEdge(self.clock)
 
 
 @cocotb.test(timeout_time=1000000000, timeout_unit="ns")
@@ -200,4 +209,5 @@ async def runUdpEngineTest(dut):
     for _ in range(200):
         await RisingEdge(tester.clock)
     dut.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[0])
-    await Timer(7, units='us')
+    await server_arbiter_thread
+    #await Timer(7, units='us')

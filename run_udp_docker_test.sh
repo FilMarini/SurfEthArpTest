@@ -2,7 +2,7 @@ set -o errexit
 set -o nounset
 set -o xtrace
 
-NET_IFC=enxf4a80db020cf
+NET_IFC=$(ip route | grep default | awk '{print $5}')
 PORT_NUM=8192
 IMAGE_NAME=ethernet-test
 DOCKER_NETWORK=mymacvlan
