@@ -14,6 +14,7 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
+NUM_SERVERS_C = 4
 SERVERS_IP_C = ['192.168.2.11', '192.168.2.12', '192.168.2.13', '192.168.2.14', '192.168.2.12', '192.168.2.13']
 PACKETS_PER_SERVER_C = 50   # >=50
 
@@ -137,7 +138,7 @@ class UdpEngineTest:
                         self.currentRxIp = socket.inet_ntoa(big_endian_ip)
                         # Set flag of IP change
                         self.ipChanged = True
-                        self.log.info(f'Currently data is coming from {self.currentRxIp} which corresponds to machine number {SERVERS_IP_C.index(self.currentRxIp)}')
+                        self.log.info(f'Currently data is coming from {self.currentRxIp} which corresponds to machine number {SERVERS_IP_C.index(self.currentRxIp)+1}')
                 # Get DataRx with tKeep as mask
                 dataRx = self.dataRx.value.integer
                 dataRxKeep = self.dataRxKeep.value.integer
@@ -173,7 +174,7 @@ class UdpEngineTest:
                 self.log.debug(f'IP will change at match {self.next_check_idx}')
             else:
                 assert (dataRx == dataTx), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
-                self.log.debug(f'Match #{self.check_idx} from machine {SERVERS_IP_C.index(self.currentRxIp)}!')
+                self.log.debug(f'Match #{self.check_idx} from machine {SERVERS_IP_C.index(self.currentRxIp)+1}!')
                 self.check_idx += 1
 
     async def server_arbiter(self):
@@ -188,6 +189,15 @@ class UdpEngineTest:
                 if self.check_idx == self.next_check_idx:
                     self.log.info(f'Changing IP address to {SERVERS_IP_C[i+1]}')
                     self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
+                    self.next_check_idx = float('inf')
+                    break
+                await RisingEdge(self.clock)
+        # Check servers using tDest
+        for j in range(NUM_SERVERS_C):
+            while True:
+                if self.check_idx == self.next_check_idx:
+                    self.log.info(f'Changing tDest to {j+1}')
+                    self.tDest.value = j+1
                     self.next_check_idx = float('inf')
                     break
                 await RisingEdge(self.clock)
