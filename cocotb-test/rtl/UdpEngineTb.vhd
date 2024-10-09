@@ -31,6 +31,7 @@ entity UdpEngineTb is
       DataRx       : out slv(127 downto 0);
       DataRxKeep   : out slv(15 downto 0);
       DataRxValid  : out sl;
+      DataRxIp     : out slv(31 downto 0);
       -- XGMII
       phyDTx       : out slv(63 downto 0);
       phyCTx       : out slv(7 downto 0);
@@ -100,6 +101,7 @@ begin  -- architecture behav
    DataRx      <= rxMaster.tData(127 downto 0);
    DataRxValid <= rxMaster.tValid;
    DataRxKeep  <= rxMaster.tKeep(15 downto 0);
+   DataRxIp    <= rxMaster.tUser(39 downto 8);
 
    ----------------------
    -- IPv4/ARP/UDP Engine
@@ -114,7 +116,8 @@ begin  -- architecture behav
          CLIENT_EN_G         => true,
          CLIENT_SIZE_G       => 1,
          CLIENT_PORTS_G      => (0 => 8193),
-         CLIENT_EXT_CONFIG_G => true)
+         CLIENT_EXT_CONFIG_G => true,
+         ARP_TAB_ENTRIES_G   => 4)
       port map (
          -- Local Configurations
          localMac            => MAC_ADDR_G,

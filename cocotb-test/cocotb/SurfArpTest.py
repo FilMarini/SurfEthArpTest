@@ -14,7 +14,7 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
-SERVERS_IP_C = ['192.168.2.11', '192.168.2.12']
+SERVERS_IP_C = ['192.168.2.11', '192.168.2.12', '192.168.2.13', '192.168.2.14', '192.168.2.12', '192.168.2.13']
 PACKETS_PER_SERVER_C = 50   # >=50
 
 def invert_ip(ip_address):
@@ -44,6 +44,7 @@ class UdpEngineTest:
         # User
         self.check_idx = 0
         self.ipChanged = False
+        self.currentRxIp = 0
         # Clock
         self.clock = self.dut.clk
         # Reset
@@ -58,6 +59,7 @@ class UdpEngineTest:
         self.dataRx      = self.dut.DataRx
         self.dataRxValid = self.dut.DataRxValid
         self.dataRxKeep  = self.dut.DataRxKeep
+        self.dataRxIp    = self.dut.DataRxIp
         self.dataTx      = self.dut.DataTx
         self.dataTxValid = self.dut.DataTxValid
         self.dataTxKeep  = self.dut.DataTxKeep
@@ -102,22 +104,20 @@ class UdpEngineTest:
             data = await self.xgmii_tx.recv()
             # Extract XGMII data
             packet = Ether(data.get_payload())
-            self.log.debug(f'Sending packet {pkt_idx} from XGMII')
             if ARP in packet or UDP in packet:
                 # Send packet and get response
-                resp, _ = srp(packet, verbose=True, iface='eth0')
+                resp, _ = srp(packet, verbose=False, iface='eth0')
                 #sendp(packet, verbose=True, iface='lo')
                 for _, r in resp:
                     recv_pkt = r
-                self.log.debug(f'Got response for packet {pkt_idx}')
+                self.log.debug(f'Packet {pkt_idx} has enjoyed a round trip')
                 # Extract XGMII data
                 ackRaw = raw(recv_pkt)
                 # Put XGMII into testbench
                 xgmiiFrame = XgmiiFrame.from_payload(ackRaw)
                 await self.xgmii_rx.send(xgmiiFrame)
             else:
-                self.log.debug('just sending a packet')
-                sendp(packet, verbose=True, iface='eth0')
+                sendp(packet, verbose=False, iface='eth0')
             pkt_idx += 1
 
     async def get_data(self):
@@ -125,14 +125,25 @@ class UdpEngineTest:
         tx_data_idx = 0
         while True:
             if self.dataRxValid.value == 1:
+                # Get DataRx with tKeep as mask
                 dataRx = self.dataRx.value.integer
                 dataRxKeep = self.dataRxKeep.value.integer
                 dataRxHex = dataRx.to_bytes(16, byteorder='big')
                 mask_bits_rx = bin(dataRxKeep)[2:].zfill(16)
                 dataRxByte = bytes([b for b, m in zip(dataRxHex, mask_bits_rx) if m == '1'])
+                # Put masked dataRx in queue
                 await self.dataRxQueue.put(int.from_bytes(dataRxByte, "big"))
+                # Get IP address of dataRx
+                dataRxIp = self.dataRxIp.value.integer
+                if dataRxIp != 0:
+                    currentRxIp = dataRxIp
+                    big_endian_ip = struct.pack("<I", currentRxIp)
+                    if socket.inet_ntoa(big_endian_ip) != self.currentRxIp:
+                        self.currentRxIp = socket.inet_ntoa(big_endian_ip)
+                        self.log.debug(f'Currently data is coming from {self.currentRxIp} which corresponds to machine number {SERVERS_IP_C.index(self.currentRxIp)}')
                 rx_data_idx += 1
             if self.dataTxValid.value == 1:
+                # Get DataTx with tKeep as mask
                 dataTx = self.dataTx.value.integer
                 dataTxKeep = self.dataTxKeep.value.integer
                 dataTxHex = dataTx.to_bytes(16, byteorder='big')
