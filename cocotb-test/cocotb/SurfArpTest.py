@@ -14,9 +14,10 @@ from cocotb.triggers import RisingEdge, Timer
 from cocotbext.axi import AxiStreamBus, AxiStreamSource, AxiStreamSink, AxiStreamFrame
 from cocotbext.eth import XgmiiSource, XgmiiSink, XgmiiFrame
 
-NUM_SERVERS_C = 4
-SERVERS_IP_C = ['192.168.2.11', '192.168.2.12', '192.168.2.13', '192.168.2.14', '192.168.2.12', '192.168.2.13']
-PACKETS_PER_SERVER_C = 50   # >=50
+SERVERS_IP_C = ['192.168.2.11', '192.168.2.12', '192.168.2.13', '192.168.2.14']
+TARGETS_C = ['192.168.2.11', '192.168.2.12', '192.168.2.13', '192.168.2.14', '192.168.2.12', '192.168.2.13']
+NUM_SERVERS_C = len(SERVERS_IP_C)
+PACKETS_PER_SERVER_C = 50
 
 def invert_ip(ip_address):
     # Split the IP address by the dots into a list of octets
@@ -47,6 +48,7 @@ class UdpEngineTest:
         self.next_check_idx = float('inf')
         self.ipChanged = False
         self.currentRxIp = 0
+        self.listIp = []
         # Clock
         self.clock = self.dut.clk
         # Reset
@@ -164,10 +166,12 @@ class UdpEngineTest:
             dataRx = await self.dataRxQueue.get()
             dataTx = await self.dataTxQueue.get()
             if self.ipChanged:
+                ipToCheck = self.listIp.pop()
                 while dataRx != dataTx:
                     dataTx = await self.dataTxQueue.get()
                     self.log.debug(f'Looking for a match.. {hex(dataRx)} --- {hex(dataTx)}')
                 self.log.debug(f'Starting to check data coming from {self.currentRxIp}!')
+                assert(ipToCheck == self.currentRxIp), f"Mismatch in expected IP! Expected {ipToCheck}, got {self.currentRxIp}"
                 self.ipChanged = False
                 self.check_idx += 1
                 self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
@@ -180,15 +184,17 @@ class UdpEngineTest:
     async def server_arbiter(self):
         # Check first server
         while True:
-            if self.remoteIpAddr.value == ip_to_decimal(SERVERS_IP_C[0]):
+            if self.remoteIpAddr.value == ip_to_decimal(TARGETS_C[0]):
+                self.listIp.insert(0, TARGETS_C[0])
                 break
             await RisingEdge(self.clock)
         # Check list of servers
-        for i in range(len(SERVERS_IP_C)-1):
+        for i in range(len(TARGETS_C)-1):
             while True:
                 if self.check_idx == self.next_check_idx:
-                    self.log.info(f'Changing IP address to {SERVERS_IP_C[i+1]}')
-                    self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
+                    self.log.info(f'Changing IP address to {TARGETS_C[i+1]}')
+                    self.remoteIpAddr.value = ip_to_decimal(TARGETS_C[i+1])
+                    self.listIp.insert(0, TARGETS_C[i+1])
                     self.next_check_idx = float('inf')
                     break
                 await RisingEdge(self.clock)
@@ -198,6 +204,7 @@ class UdpEngineTest:
                 if self.check_idx == self.next_check_idx:
                     self.log.info(f'Changing tDest to {j+1}')
                     self.tDest.value = j+1
+                    self.listIp.insert(0, SERVERS_IP_C[j])
                     self.next_check_idx = float('inf')
                     break
                 await RisingEdge(self.clock)
@@ -222,6 +229,6 @@ async def runUdpEngineTest(dut):
     tester.log.info("Starting Tesbench")
     for _ in range(200):
         await RisingEdge(tester.clock)
-    dut.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[0])
+    dut.remoteIpAddr.value = ip_to_decimal(TARGETS_C[0])
     await server_arbiter_thread
     #await Timer(7, units='us')
