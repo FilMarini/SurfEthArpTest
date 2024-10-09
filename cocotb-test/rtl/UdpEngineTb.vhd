@@ -109,15 +109,16 @@ begin  -- architecture behav
    U_UDP_Client : entity surf.UdpEngineWrapper
       generic map (
          -- Simulation Generics
-         TPD_G               => TPD_G,
+         TPD_G                  => TPD_G,
          -- UDP Server Generics
-         SERVER_EN_G         => false,
+         SERVER_EN_G            => false,
          -- UDP Client Generics
-         CLIENT_EN_G         => true,
-         CLIENT_SIZE_G       => 1,
-         CLIENT_PORTS_G      => (0 => 8193),
-         CLIENT_EXT_CONFIG_G => true,
-         ARP_TAB_ENTRIES_G   => 4)
+         CLIENT_EN_G            => true,
+         CLIENT_TAG_IP_IN_TUSER => true,
+         CLIENT_SIZE_G          => 1,
+         CLIENT_PORTS_G         => (0 => 8193),
+         CLIENT_EXT_CONFIG_G    => true,
+         ARP_TAB_ENTRIES_G      => 4)
       port map (
          -- Local Configurations
          localMac            => MAC_ADDR_G,

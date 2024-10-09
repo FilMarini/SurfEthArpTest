@@ -43,6 +43,7 @@ class UdpEngineTest:
         self.log.setLevel(logging.DEBUG)
         # User
         self.check_idx = 0
+        self.next_check_idx = float('inf')
         self.ipChanged = False
         self.currentRxIp = 0
         # Clock
@@ -125,6 +126,18 @@ class UdpEngineTest:
         tx_data_idx = 0
         while True:
             if self.dataRxValid.value == 1:
+                # Get IP address of dataRx
+                dataRxIp = self.dataRxIp.value.integer
+                if dataRxIp != 0:
+                    currentRxIp = dataRxIp
+                    big_endian_ip = struct.pack("<I", currentRxIp)
+                    # Check if there's been a change in incoming IP
+                    if socket.inet_ntoa(big_endian_ip) != self.currentRxIp:
+                        # Set variable of current IP
+                        self.currentRxIp = socket.inet_ntoa(big_endian_ip)
+                        # Set flag of IP change
+                        self.ipChanged = True
+                        self.log.info(f'Currently data is coming from {self.currentRxIp} which corresponds to machine number {SERVERS_IP_C.index(self.currentRxIp)}')
                 # Get DataRx with tKeep as mask
                 dataRx = self.dataRx.value.integer
                 dataRxKeep = self.dataRxKeep.value.integer
@@ -133,14 +146,6 @@ class UdpEngineTest:
                 dataRxByte = bytes([b for b, m in zip(dataRxHex, mask_bits_rx) if m == '1'])
                 # Put masked dataRx in queue
                 await self.dataRxQueue.put(int.from_bytes(dataRxByte, "big"))
-                # Get IP address of dataRx
-                dataRxIp = self.dataRxIp.value.integer
-                if dataRxIp != 0:
-                    currentRxIp = dataRxIp
-                    big_endian_ip = struct.pack("<I", currentRxIp)
-                    if socket.inet_ntoa(big_endian_ip) != self.currentRxIp:
-                        self.currentRxIp = socket.inet_ntoa(big_endian_ip)
-                        self.log.debug(f'Currently data is coming from {self.currentRxIp} which corresponds to machine number {SERVERS_IP_C.index(self.currentRxIp)}')
                 rx_data_idx += 1
             if self.dataTxValid.value == 1:
                 # Get DataTx with tKeep as mask
@@ -154,48 +159,36 @@ class UdpEngineTest:
             await RisingEdge(self.clock)
 
     async def check_data(self):
-        mismatch_idx = 0
-        startLooking = True
         while True:
-            if startLooking:
-                dataRx = await self.dataRxQueue.get()
-                dataTx = await self.dataTxQueue.get()
+            dataRx = await self.dataRxQueue.get()
+            dataTx = await self.dataTxQueue.get()
+            if self.ipChanged:
                 while dataRx != dataTx:
                     dataTx = await self.dataTxQueue.get()
                     self.log.debug(f'Looking for a match.. {hex(dataRx)} --- {hex(dataTx)}')
-                self.log.debug('Starting to check data!')
-                startLooking = False
+                self.log.debug(f'Starting to check data coming from {self.currentRxIp}!')
                 self.ipChanged = False
                 self.check_idx += 1
                 self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
-                self.log.debug(f'Checking will stop at match {self.next_check_idx}')
+                self.log.debug(f'IP will change at match {self.next_check_idx}')
             else:
-                dataTx = await self.dataTxQueue.get()
-                dataRx = await self.dataRxQueue.get()
-                if (dataRx != dataTx and self.ipChanged):
-                    startLooking = True
-                    self.log.warning('Found mismatch, its possible its from the IP changing')
-                elif (dataRx != dataTx and not self.ipChanged):
-                    assert (False), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
-                else:
-                    self.log.debug(f'Match #{self.check_idx}! {hex(dataRx)} --- {hex(dataTx)}')
+                assert (dataRx == dataTx), f'Mismatch!! --> Rx: {hex(dataRx)} -- Tx: {hex(dataTx)}'
+                self.log.debug(f'Match #{self.check_idx} from machine {SERVERS_IP_C.index(self.currentRxIp)}!')
                 self.check_idx += 1
 
     async def server_arbiter(self):
         # Check first server
         while True:
             if self.remoteIpAddr.value == ip_to_decimal(SERVERS_IP_C[0]):
-                self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
                 break
             await RisingEdge(self.clock)
         # Check list of servers
         for i in range(len(SERVERS_IP_C)-1):
             while True:
                 if self.check_idx == self.next_check_idx:
-                    self.log.debug(f'Changing IP address to {SERVERS_IP_C[i+1]}')
-                    self.ipChanged = True
+                    self.log.info(f'Changing IP address to {SERVERS_IP_C[i+1]}')
                     self.remoteIpAddr.value = ip_to_decimal(SERVERS_IP_C[i+1])
-                    self.next_check_idx = self.check_idx + PACKETS_PER_SERVER_C
+                    self.next_check_idx = float('inf')
                     break
                 await RisingEdge(self.clock)
         # Check last server
