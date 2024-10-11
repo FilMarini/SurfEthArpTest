@@ -6,7 +6,7 @@
 GHDLDIR ?= /usr/local/lib/ghdl
 GHDL=ghdl
 GHDLFLAGS= --ieee=synopsys -fexplicit
-GHDLRUNFLAGS= --vpi=$$(cocotb-config --lib-name-path vpi ghdl) --wave=$(WAVEFILENAME).ghw
+GHDLRUNFLAGS= --ieee-asserts=disable --vpi=$$(cocotb-config --lib-name-path vpi ghdl) --wave=$(WAVEFILENAME).ghw
 WAVEFILENAME := wave
 
 # Default target
