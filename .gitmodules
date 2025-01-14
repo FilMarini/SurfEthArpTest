@@ -1,3 +1,6 @@
 [submodule "surf"]
 	path = surf
 	url = git@github.com:FilMarini/surf.git
+[submodule "Simple-10GbE-RUDP-KCU105-Example"]
+	path = Simple-10GbE-RUDP-KCU105-Example
+	url = https://github.com/slaclab/Simple-10GbE-RUDP-KCU105-Example.git
